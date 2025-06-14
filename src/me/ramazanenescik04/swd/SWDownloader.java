@@ -16,7 +16,7 @@ public class SWDownloader extends JFrame {
     private JProgressBar progressBar;
 
     public SWDownloader() {
-        super("SitWatch Video İndirme Aracı");
+        super("SitWatch Video İndirme Aracı - V1.1 - By: @ramazanenescik04");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(500, 140);
         setLocationRelativeTo(null);

@@ -33,7 +33,7 @@ public class SWApi {
 		url.replaceAll("http:", "https:"); // Ensure URL is secure
 		String[] parts = url.split("/");
 		
-		if (parts.length < 3 || !parts[2].equals("sitwatch.net") || !parts[3].equals("watch")) {
+		if (parts.length < 3 || !parts[2].equals("sitwatch.net") || !(parts[3].equals("watch") || parts[3].equals("swipe"))) {
 			System.err.println("Invalid SitWatch URL: " + url);
 			return -1; // Invalid URL
 		}
