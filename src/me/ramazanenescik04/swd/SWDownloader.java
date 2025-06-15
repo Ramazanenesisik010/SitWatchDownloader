@@ -10,35 +10,99 @@ import java.nio.file.*;
 public class SWDownloader extends JFrame {
 	private static final long serialVersionUID = 1L;
 	
+	public static final String VERSION = "1.2";
+	
 	private JTextField urlField;
     private JButton downloadButton;
+    private JButton cancelButton;
     private JLabel statusLabel;
     private JProgressBar progressBar;
+    
+    private boolean promptFileName = true;
+    private boolean useFixedDirectory = false;
+    private File fixedDirectory = new File(System.getProperty("user.home"), "İndirilenler");
+
+    private SwingWorker<Void, Integer> worker;
 
     public SWDownloader() {
-        super("SitWatch Video İndirme Aracı - V1.1 - By: @ramazanenescik04");
+    	super("SitWatch Video İndirme Aracı - V" + VERSION + " - By: @ramazanenescik04");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(500, 140);
+        setSize(500, 200);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
         urlField = new JTextField();
         downloadButton = new JButton("İndir");
+        cancelButton = new JButton("İptal Et");
+        cancelButton.setEnabled(false);
+
         statusLabel = new JLabel("URL gir ve indir butonuna bas.", SwingConstants.CENTER);
+        statusLabel.setPreferredSize(new Dimension(500, 30)); // Görünürlüğü garantile
 
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
+
+        // Status + progress ayrı bir panelde
+        JPanel centerPanel = new JPanel(new BorderLayout(5, 5));
+        centerPanel.add(progressBar, BorderLayout.CENTER);
+        centerPanel.add(statusLabel, BorderLayout.SOUTH);
 
         JPanel topPanel = new JPanel(new BorderLayout(5, 5));
         topPanel.add(new JLabel("Video URL:"), BorderLayout.WEST);
         topPanel.add(urlField, BorderLayout.CENTER);
         topPanel.add(downloadButton, BorderLayout.EAST);
 
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.add(cancelButton);
+        
+        JMenuBar menuBar = new JMenuBar();
+        JMenu settingsMenu = new JMenu("Ayarlar");
+
+        JCheckBoxMenuItem askNameItem = new JCheckBoxMenuItem("İndirme Öncesi Dosya Adı Sor", true);
+        JCheckBoxMenuItem useFixedDirItem = new JCheckBoxMenuItem("Sabit Kayıt Klasörü Kullan", true);
+        JMenuItem chooseDirItem = new JMenuItem("Kayıt Klasörünü Seç...");
+
+        settingsMenu.add(askNameItem);
+        settingsMenu.add(useFixedDirItem);
+        settingsMenu.addSeparator();
+        settingsMenu.add(chooseDirItem);
+        
+        JMenuItem aboutItem = new JMenuItem("Hakkında");
+        
+        menuBar.add(settingsMenu);
+        menuBar.add(aboutItem);
+        setJMenuBar(menuBar);
+
         add(topPanel, BorderLayout.NORTH);
-        add(progressBar, BorderLayout.CENTER);
-        add(statusLabel, BorderLayout.SOUTH);
+        add(centerPanel, BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
 
         downloadButton.addActionListener(e -> startDownload());
+        cancelButton.addActionListener(e -> {
+            if (worker != null && !worker.isDone()) {
+                worker.cancel(true);
+                statusLabel.setText("İndirme iptal edildi.");
+            }
+        });
+        chooseDirItem.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Kayıt Klasörü Seç");
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            int result = chooser.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                fixedDirectory = chooser.getSelectedFile();
+            }
+        });
+        aboutItem.addActionListener(e -> {
+			JOptionPane.showMessageDialog(this,
+					"SitWatch Video İndirme Aracı - V" + VERSION + "\n" +
+					"Yapımcı: @ramazanenescik04\n" +
+					"Bu araç, SitWatch videolarını indirmenizi sağlar.",
+					"Hakkında", JOptionPane.INFORMATION_MESSAGE);
+		});
+        
+        askNameItem.addActionListener(e -> promptFileName = askNameItem.isSelected());
+		useFixedDirItem.addActionListener(e -> useFixedDirectory = useFixedDirItem.isSelected());
     }
 
     private void startDownload() {
@@ -49,50 +113,37 @@ public class SWDownloader extends JFrame {
         }
 
         downloadButton.setEnabled(false);
-        statusLabel.setText("İndiriliyor...");
+        cancelButton.setEnabled(true);
         progressBar.setValue(0);
+        statusLabel.setText("Dosya boyutu kontrol ediliyor...");
 
-        SwingWorker<Void, Integer> worker = new SwingWorker<Void, Integer>() {
-        	int contentLength = -1;
+        worker = new SwingWorker<Void, Integer>() {
+            private Path outputPath;
+
             @Override
             protected Void doInBackground() {
                 try {
                     URL url = SWApi.getVideoURI(SWApi.getVideoID(urlString)).toURL();
-                    HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
-                    connection.setRequestProperty("User-Agent", "SimpleVideoDownloader");
-                    connection.setRequestMethod("HEAD"); // Sadece header al
-                    connection.connect();
+                    HttpsURLConnection headConn = (HttpsURLConnection) url.openConnection();
+                    headConn.setRequestProperty("User-Agent", "SimpleVideoDownloader");
+                    headConn.setRequestMethod("HEAD");
+                    headConn.connect();
 
-                    int responseCode = connection.getResponseCode();
-                    if (responseCode / 100 != 2) {
-                        throw new IOException("HTTP Hatası: " + responseCode);
-                    }
+                    int contentLength = headConn.getContentLength();
+                    headConn.disconnect();
 
-                    contentLength = connection.getContentLength();
-                    connection.disconnect();
-
-                    String sizeText;
-                    if (contentLength > 0) {
-                        sizeText = String.format("Dosya boyutu: %.2f MB", contentLength / 1024.0 / 1024.0);
-                    } else {
-                        sizeText = "Dosya boyutu alınamadı.";
-                    }
-
+                    String sizeText = (contentLength > 0)
+                            ? String.format("Dosya boyutu: %.2f MB", contentLength / 1024.0 / 1024.0)
+                            : "Dosya boyutu alınamadı.";
                     SwingUtilities.invokeLater(() -> statusLabel.setText(sizeText + " İndiriliyor..."));
 
-                    // Şimdi GET ile asıl indirme yapacağız
-                    connection = (HttpsURLConnection) url.openConnection();
-                    connection.setRequestProperty("User-Agent", "SimpleVideoDownloader");
-                    connection.connect();
-
-                    int responseCode2 = connection.getResponseCode();
-                    if (responseCode2 / 100 != 2) {
-                        throw new IOException("HTTP Hatası: " + responseCode2);
-                    }
+                    HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+                    conn.setRequestProperty("User-Agent", "SimpleVideoDownloader");
+                    conn.connect();
 
                     String fileName = "";
-                    String disposition = connection.getHeaderField("Content-Disposition");
-                    if (disposition != null && disposition.indexOf("filename=") != -1) {
+                    String disposition = conn.getHeaderField("Content-Disposition");
+                    if (disposition != null && disposition.contains("filename=")) {
                         int index = disposition.indexOf("filename=") + 9;
                         fileName = disposition.substring(index).replace("\"", "");
                     } else {
@@ -100,18 +151,28 @@ public class SWDownloader extends JFrame {
                     }
                     if (fileName.isEmpty()) fileName = "indirilen_video";
                     
-                    fileName += ".mp4"; // Varsayılan uzantı olarak mp4 ekleyelim
+                    fileName += ".mp4"; // Varsayılan olarak mp4 uzantısı ekle
+                    
+                    // Dosya yolu oluşturulurken:
+                    if (promptFileName) {
+                        String name = JOptionPane.showInputDialog("Dosya adını girin:", fileName);
+                        if (name != null && !name.trim().isEmpty()) fileName = name.trim();
+                    }
 
-                    Path outputPath = Paths.get(fileName);
+                    outputPath = useFixedDirectory
+                        ? new File(fixedDirectory, fileName).toPath()
+                        : Paths.get(fileName);
 
-                    try (InputStream in = connection.getInputStream();
-                         OutputStream out = Files.newOutputStream(outputPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    try (InputStream in = conn.getInputStream();
+                    	OutputStream out = Files.newOutputStream(outputPath, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
 
                         byte[] buffer = new byte[4096];
                         int bytesRead;
                         long totalRead = 0;
 
                         while ((bytesRead = in.read(buffer)) != -1) {
+                            if (isCancelled()) throw new InterruptedException("İptal edildi");
+
                             out.write(buffer, 0, bytesRead);
                             totalRead += bytesRead;
 
@@ -122,18 +183,25 @@ public class SWDownloader extends JFrame {
                             }
 
                             String mbDownloaded = String.format("%.2f MB", totalRead / 1024.0 / 1024.0);
-                            SwingUtilities.invokeLater(() -> statusLabel.setText("İndiriliyor... " + mbDownloaded + " / " + sizeText));
+                            SwingUtilities.invokeLater(() -> statusLabel.setText("İndiriliyor... " + mbDownloaded + " / "  + sizeText));
                         }
                     }
 
+                } catch (InterruptedException e) {
+                    // iptal edildiğinde dosyayı sil
+                    if (outputPath != null && Files.exists(outputPath)) {
+                        try {
+                            Files.delete(outputPath);
+                        } catch (IOException ignored) {}
+                    }
+                    SwingUtilities.invokeLater(() -> statusLabel.setText("İndirme iptal edildi."));
                 } catch (Exception ex) {
+                	ex.printStackTrace();
                     SwingUtilities.invokeLater(() -> {
                         JOptionPane.showMessageDialog(SWDownloader.this,
                                 "İndirme hatası:\n" + ex.getMessage(),
                                 "Hata", JOptionPane.ERROR_MESSAGE);
                         statusLabel.setText("Hata oluştu.");
-                        downloadButton.setEnabled(true);
-                        progressBar.setValue(0);
                     });
                 }
                 return null;
@@ -147,14 +215,19 @@ public class SWDownloader extends JFrame {
 
             @Override
             protected void done() {
-                statusLabel.setText("İndirme tamamlandı.");
-                progressBar.setValue(100);
                 downloadButton.setEnabled(true);
+                cancelButton.setEnabled(false);
+
+                if (!isCancelled()) {
+                    progressBar.setValue(100);
+                    statusLabel.setText("İndirme tamamlandı.");
+                }
             }
         };
 
         worker.execute();
     }
+
 
 	public static void main(String[] args) {
 		SwingUtilities.invokeLater(() -> {
