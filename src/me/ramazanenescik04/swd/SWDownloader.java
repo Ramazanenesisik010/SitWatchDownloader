@@ -10,7 +10,7 @@ import java.nio.file.*;
 public class SWDownloader extends JFrame {
 	private static final long serialVersionUID = 1L;
 	
-	public static final String VERSION = "1.2";
+	public static final String VERSION = "1.3";
 	
 	private JTextField urlField;
     private JButton downloadButton;
@@ -123,7 +123,8 @@ public class SWDownloader extends JFrame {
             @Override
             protected Void doInBackground() {
                 try {
-                    URL url = SWApi.getVideoURI(SWApi.getVideoID(urlString)).toURL();
+                	int videoID = SWApi.getVideoID(urlString);
+                    URL url = SWApi.getVideoURI(videoID).toURL();
                     HttpsURLConnection headConn = (HttpsURLConnection) url.openConnection();
                     headConn.setRequestProperty("User-Agent", "SimpleVideoDownloader");
                     headConn.setRequestMethod("HEAD");
@@ -138,18 +139,10 @@ public class SWDownloader extends JFrame {
                     SwingUtilities.invokeLater(() -> statusLabel.setText(sizeText + " İndiriliyor..."));
 
                     HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
-                    conn.setRequestProperty("User-Agent", "SimpleVideoDownloader");
+                    conn.setRequestProperty("User-Agent", "SWDownloader/" + SWDownloader.VERSION);
                     conn.connect();
 
-                    String fileName = "";
-                    String disposition = conn.getHeaderField("Content-Disposition");
-                    if (disposition != null && disposition.contains("filename=")) {
-                        int index = disposition.indexOf("filename=") + 9;
-                        fileName = disposition.substring(index).replace("\"", "");
-                    } else {
-                        fileName = Paths.get(url.getPath()).getFileName().toString();
-                    }
-                    if (fileName.isEmpty()) fileName = "indirilen_video";
+                    String fileName = SWApi.getVideoTitle(videoID);
                     
                     fileName += ".mp4"; // Varsayılan olarak mp4 uzantısı ekle
                     
@@ -230,6 +223,21 @@ public class SWDownloader extends JFrame {
 
 
 	public static void main(String[] args) {
+		try {
+			UIManager.LookAndFeelInfo[] looks = UIManager.getInstalledLookAndFeels();
+	        for (UIManager.LookAndFeelInfo look : looks) {
+	        	if (look.getClassName().equals("com.sun.java.swing.plaf.windows.WindowsLookAndFeel")) {
+	        		UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
+	        		break;
+	        	} else if (look.getClassName().equals("com.sun.java.swing.plaf.gtk.GTKLookAndFeel")) {
+	        		UIManager.setLookAndFeel("com.sun.java.swing.plaf.gtk.GTKLookAndFeel");
+	        		break;
+	        	} 
+	        }
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
 		SwingUtilities.invokeLater(() -> {
 			SWDownloader frame = new SWDownloader();
 			frame.setVisible(true);

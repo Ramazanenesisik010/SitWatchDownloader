@@ -1,7 +1,13 @@
 package me.ramazanenescik04.swd;
 
+import java.io.InputStream;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLClassLoader;
+
+import javax.net.ssl.HttpsURLConnection;
 
 /**
  * SitWatch Downloader API
@@ -40,6 +46,51 @@ public class SWApi {
 		         }
 		}
 		return true;
+	}
+	
+	public static Class<?> getJSONObjectClass() {
+		try {
+			URLClassLoader classLoader = new URLClassLoader(new URL[] { new URL("https://search.maven.org/remotecontent?filepath=org/json/json/20250517/json-20250517.jar")});
+			
+			return Class.forName("org.json.JSONObject", true, classLoader);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+	public static String getVideoTitle(int videoID) {
+		String infoAPI = API_URL + "/videos/" + videoID + "/info"; // Example API endpoint for video info
+		
+		try {
+			String data = "";
+			
+			HttpsURLConnection connection = (HttpsURLConnection) new URL(infoAPI).openConnection();
+			connection.setRequestMethod("GET");
+			connection.setRequestProperty("User-Agent", "SWDownloader/" + SWDownloader.VERSION);
+			connection.setRequestProperty("Accept", "application/json");
+			connection.connect();
+			
+			InputStream inputStream = connection.getInputStream();
+			byte[] buffer = new byte[1024];
+			int bytesRead;
+			while ((bytesRead = inputStream.read(buffer)) != -1) {
+				data += new String(buffer, 0, bytesRead);
+			}
+			
+			inputStream.close();
+			
+			Class<?> jsonObjectClass = getJSONObjectClass();
+			
+			if (jsonObjectClass != null) {
+				Object jsonObject = jsonObjectClass.getConstructor(String.class).newInstance(data); // Mocked JSON response
+				return (String) jsonObjectClass.getMethod("getString", String.class).invoke(jsonObject, "title");
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		return "" + videoID; // Fallback to video ID if name cannot be retrieved
 	}
 	
 	public static int getVideoID(String url) {
